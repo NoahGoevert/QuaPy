@@ -82,6 +82,20 @@ class TestProtocols(unittest.TestCase):
 
         self.assertEqual(count, p.total())
 
+    def test_app_multiclass_smooth_limits(self):
+        """
+        When smooth_limits_epsilon is set, there should not be any classes with zero probability
+        """
+        data = mock_labelled_collection()
+        p = APP(data, sample_size=100, n_prevalences=10, repeats=1, smooth_limits_epsilon=0.01)
+
+        # get prevalence grid and also add a column for the last class
+        grid = p.prevalence_grid()
+        grid_all_classes = np.hstack((grid, 1. - grid.sum(axis=1, keepdims=True)))
+
+        self.assertNotIn(0., grid_all_classes.flatten())
+        # This test should fail for > 2 classes, when using the original version of APP
+
     def test_npp_replicate(self):
         data = mock_labelled_collection()
         p = NPP(data, sample_size=5, repeats=5, random_state=42)
