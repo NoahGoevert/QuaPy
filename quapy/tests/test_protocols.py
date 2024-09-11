@@ -66,7 +66,7 @@ class TestProtocols(unittest.TestCase):
 
     def test_app_number(self):
         data = mock_labelled_collection()
-        p = APP(data, sample_size=100, n_prevalences=10, repeats=1)
+        p = APP(data, sample_size=100, n_prevalences=27, repeats=1)
 
         # surprisingly enough, for some n_prevalences the test fails, notwithstanding
         # everything is correct. The problem is that in function APP.prevalence_grid()

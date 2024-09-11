@@ -261,6 +261,12 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         s = [s] * (dimensions - 1)
         prevs = [p for p in itertools.product(*s, repeat=1) if (sum(p) < (1.+eps))]
         prevs = np.asarray(prevs).reshape(len(prevs), -1)
+
+        # Because floating inaccuracy: normalize lines with sum > 1
+        sums = prevs.sum(axis=1)
+        mask = sums > 1
+        prevs[mask] = prevs[mask] / sums[mask, np.newaxis]
+
         if self.repeats > 1:
             prevs = np.repeat(prevs, self.repeats, axis=0)
         return prevs
