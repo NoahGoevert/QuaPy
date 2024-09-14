@@ -256,7 +256,11 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
             in the grid multiplied by `repeat`
         """
         dimensions = self.data.n_classes
-        s = F.prevalence_linspace(self.n_prevalences, repeats=1, smooth_limits_epsilon=self.smooth_limits_epsilon)
+        s = F.prevalence_linspace(self.n_prevalences, repeats=1, smooth_limits_epsilon=0)
+        # since we do not do the smoothing above anymore, we need to check the sanity of epsilon here
+        # also we adapted the checking formula to the process below
+        if self.smooth_limits_epsilon > s[1] - s[-1] * self.smooth_limits_epsilon * (dimensions - 2):
+            raise ValueError(f'the smoothing in the limits is greater than the prevalence step')
         eps = (s[1]-s[0])/2 # handling floating rounding
         s = [s] * (dimensions - 1)
         prevs = [p for p in itertools.product(*s, repeat=1) if (sum(p) < (1.+eps))]
@@ -266,6 +270,18 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         sums = prevs.sum(axis=1)
         mask = sums > 1
         prevs[mask] = prevs[mask] / sums[mask, np.newaxis]
+
+        # only do smoothing if necessary to increase performance
+        if self.smooth_limits_epsilon > 0:
+            # count 0 entries per line
+            zero_counts = np.count_nonzero(prevs == 0, axis=1)[:, np.newaxis]
+            # add 1 to zero_counts, where the entry of the last class would be 0
+            zero_counts[np.isclose(sums, 1, atol=eps)] += 1
+            # adapt the nonzero entries in each line, so that each line in the end would add up to 1
+            # also entries are adapted proportionally to their value
+            prevs = prevs - prevs * (self.smooth_limits_epsilon * zero_counts)
+            # substitute zero entries through smooth_limits_epsilon
+            prevs[prevs == 0] = self.smooth_limits_epsilon
 
         if self.repeats > 1:
             prevs = np.repeat(prevs, self.repeats, axis=0)
