@@ -221,13 +221,15 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
     """
 
     def __init__(self, data: LabelledCollection, sample_size=None, n_prevalences=21, repeats=10,
-                 smooth_limits_epsilon=0, random_state=0, sanity_check=10000, return_type='sample_prev'):
+                 smooth_limits_epsilon=0, random_state=0, sanity_check=10000, return_type='sample_prev',
+                 relevant_class=None):
         super(APP, self).__init__(random_state)
         self.data = data
         self.sample_size = qp._get_sample_size(sample_size)
         self.n_prevalences = n_prevalences
         self.repeats = repeats
         self.smooth_limits_epsilon = smooth_limits_epsilon
+        self.relevant_class = relevant_class
         if not ((isinstance(sanity_check, int) and sanity_check>0) or sanity_check is None):
             raise ValueError('param "sanity_check" must either be None or a positive integer')
         if isinstance(sanity_check, int):
@@ -273,13 +275,32 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
 
         # only do smoothing if necessary to increase performance
         if self.smooth_limits_epsilon > 0:
-            # count 0 entries per line
             zero_counts = np.count_nonzero(prevs == 0, axis=1)[:, np.newaxis]
-            # add 1 to zero_counts, where the entry of the last class would be 0
             zero_counts[np.isclose(sums, 1, atol=eps)] += 1
-            # adapt the nonzero entries in each line, so that each line in the end would add up to 1
-            # also entries are adapted proportionally to their value
-            prevs = prevs - prevs * (self.smooth_limits_epsilon * zero_counts)
+            if self.relevant_class is None:
+                prevs -= self.smooth_limits_epsilon * zero_counts * prevs
+            else:
+                # relevant_class_index = np.where(self.data.classes_ == self.relevant_class)[0][0]
+                # prevs = np.hstack((prevs, 1 - prevs.sum(axis=1)[:, np.newaxis]))
+                # mask = np.ones(prevs.shape, dtype=bool)
+                # mask[:, relevant_class_index] = False
+                # additional = self.smooth_limits_epsilon * np.tile(zero_counts, (1, dimensions - 1)).flatten()
+                # alpha = prevs[mask] / (1 - np.repeat(prevs[np.logical_not(mask)], dimensions - 1).flatten())
+                # prevs[mask] -= alpha * additional
+                # idx = F.num_prevalence_combinations(n_prevpoints=self.n_prevalences,
+                #                                     n_classes=dimensions - relevant_class_index)
+                # prevs[idx-1, :] = 0
+                # prevs[idx-1, relevant_class_index] = 1 - (dimensions - 1) * self.smooth_limits_epsilon
+                # prevs = prevs[:, :-1]
+                rel_cls_idx = np.where(self.data.classes_ == self.relevant_class)[0][0]
+                rel_prevs = prevs[:, rel_cls_idx] if rel_cls_idx < dimensions-1 else 1-prevs.sum(axis=1)
+                rel_one_idx = F.num_prevalence_combinations(n_prevpoints=self.n_prevalences,
+                                                            n_classes=dimensions - rel_cls_idx)
+                rel_prevs[rel_one_idx-1] = 1 - (dimensions - 1) * self.smooth_limits_epsilon
+                prevs = prevs[:, np.arange(dimensions - 1) != rel_cls_idx]  # only irrelevant classes
+                prevs -= self.smooth_limits_epsilon * zero_counts * prevs / (1 - rel_prevs[:, np.newaxis])
+                prevs = np.insert(prevs, rel_cls_idx, rel_prevs, axis=1) if rel_cls_idx < dimensions-1 else prevs
+
             # substitute zero entries through smooth_limits_epsilon
             prevs[prevs == 0] = self.smooth_limits_epsilon
 
