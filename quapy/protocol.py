@@ -261,7 +261,9 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         s = F.prevalence_linspace(self.n_prevalences, repeats=1, smooth_limits_epsilon=0)
         # since we do not do the smoothing above anymore, we need to check the sanity of epsilon here
         # also we adapted the checking formula to the process below
-        if self.smooth_limits_epsilon > s[1] - s[-1] * self.smooth_limits_epsilon * (dimensions - 2):
+        if (self.smooth_limits_epsilon > s[1] - s[1] * self.smooth_limits_epsilon * (dimensions - 2)
+            or (self.relevant_class is not None
+                and self.smooth_limits_epsilon > s[1] - self.smooth_limits_epsilon * (dimensions - 1))):
             raise ValueError(f'the smoothing in the limits is greater than the prevalence step')
         eps = (s[1]-s[0])/2 # handling floating rounding
         s = [s] * (dimensions - 1)
@@ -280,18 +282,6 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
             if self.relevant_class is None:
                 prevs -= self.smooth_limits_epsilon * zero_counts * prevs
             else:
-                # relevant_class_index = np.where(self.data.classes_ == self.relevant_class)[0][0]
-                # prevs = np.hstack((prevs, 1 - prevs.sum(axis=1)[:, np.newaxis]))
-                # mask = np.ones(prevs.shape, dtype=bool)
-                # mask[:, relevant_class_index] = False
-                # additional = self.smooth_limits_epsilon * np.tile(zero_counts, (1, dimensions - 1)).flatten()
-                # alpha = prevs[mask] / (1 - np.repeat(prevs[np.logical_not(mask)], dimensions - 1).flatten())
-                # prevs[mask] -= alpha * additional
-                # idx = F.num_prevalence_combinations(n_prevpoints=self.n_prevalences,
-                #                                     n_classes=dimensions - relevant_class_index)
-                # prevs[idx-1, :] = 0
-                # prevs[idx-1, relevant_class_index] = 1 - (dimensions - 1) * self.smooth_limits_epsilon
-                # prevs = prevs[:, :-1]
                 rel_cls_idx = np.where(self.data.classes_ == self.relevant_class)[0][0]
                 rel_prevs = prevs[:, rel_cls_idx] if rel_cls_idx < dimensions-1 else 1-prevs.sum(axis=1)
                 rel_one_idx = F.num_prevalence_combinations(n_prevpoints=self.n_prevalences,
@@ -300,7 +290,6 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
                 prevs = prevs[:, np.arange(dimensions - 1) != rel_cls_idx]  # only irrelevant classes
                 prevs -= self.smooth_limits_epsilon * zero_counts * prevs / (1 - rel_prevs[:, np.newaxis])
                 prevs = np.insert(prevs, rel_cls_idx, rel_prevs, axis=1) if rel_cls_idx < dimensions-1 else prevs
-
             # substitute zero entries through smooth_limits_epsilon
             prevs[prevs == 0] = self.smooth_limits_epsilon
 
